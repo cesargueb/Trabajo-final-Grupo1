@@ -1,0 +1,352 @@
+---
+title: "Trabajo Final Estadística 2"
+---
+
+# Trabajo Final Estadística 2
+
+### Presentado por: Roque Colonia, Mauricio Sebastián; Meneses, Rolando y Guevara, César
+
+## Presentación
+
+En el presente trabajo se mostrará los factores que influyen en los ingresos de los peruanos. Estos datos serán adquiridos según la Encuesta Nacional de Hogares (ENAHO) del año 2020, la cual se concentra en las condiciones de Vida y Pobreza, Empleo e Ingresos. Consideramos pertinente realizar un estudio de los factores que influyen en el salario de unq persona. 
+
+Cabe precisar que, en su totalidad, se encuestó a 91 315 personas; sin embargo, hemos eliminado a aquellas personas que no respondieron al menos una de las preguntas en que basamos nuestro trabajo, es decir, hemos eliminado los valores perdidos. Por ello, finalmente nos quedamos solo con 298 observaciones, a partir de las cuales realizamos nuestro análisis. 
+
+Adicionalmente, analizaremos si es que dentro de nuestros encuestados contamos con personas pobres. Para definir qué entendemos por pobreza monetaria nos hemos basado en el Informe Técnico sobre la Evolución de la Pobreza Monetaria 2009 - 2020 elaborado por el Instituto Nacional de Estadística e Informática (2021). En este se determina que toda persona cuyo ingreso sea menor a S/ 360 se encuentra en situación de pobreza, ya que no podrá costear la canasta básica de alimentos y no alimentos. Asimismo, para establecer qué variables intervienen en la explicación del salario de una persona, hemos utilizado el estudio realizado por Pablo Gabilondo Larrea (2021), titulado “Factores que influyen en el salario de los empleados en el siglo XXI”, en el cual nos mencionan que variables como "Género", "Horas de Trabajo" y "Edad" afectan al salario que uno adquiere.
+
+Por último, del estudio “Principales factores determinantes de la pobreza en Colombia 1998 - 2008”, realizado por Viviana Rondón Leguizamo y Gennifer Paola Díaz, incluimos la variable del ingreso del trabajador, ya que a partir de este entendemos que no es necesario que el salario sea mínimo para que una persona sea considerada como pobre. 
+
+Además, se va a investigar si es que el salario que obtienen las personas encuestadas tanto de su trabajo primario como secundario es suficiente para lograr el presupuesto necesario para la Canasta Básica Familiar peruana. Esto lo verificaremos mediante la creación de clusters.
+
+## Procesamiento de la data
+
+### Librerías que se utilizarán
+
+```{r}
+library(rio)
+library(scatterplot3d)
+library(nortest)
+library(cluster)
+library(ggplot2)
+library(factoextra)
+library(plyr)
+library(ISwR)
+library(corrplot)
+library(snow)
+library(nFactors)
+library(readr)
+library(lavaan)
+```
+
+### Abrimos nuestra base de datos original
+
+```{r}
+#Importación de data
+data=import("Base_Enaho.csv")
+#Se modifican los nombres de las filas
+data$ID=paste0(data$VIVIENDA,data$HOGAR,data$UBIGEO,data$CODPERSO,data$CONGLOME)
+length(unique(data$ID)) == nrow(data)
+```
+
+### Realizamos un subset con las variables pertinentes
+
+```{r}
+#Las variables que se utilizarán son las siguientes: 
+subdata=subset(data,select = c("P208A","P207","P524A1","P524E1","P538A1","P538E1","ID","P513T","P518"))
+rownames(subdata)=subdata$ID
+```
+
+
+###  Metada
+
+1. IngTotalPrin: Esta variable consiste en el ingreso total que tienen los encuestados de su trabajo principal sin descuentos
+
+2. IngLiquiPrin: Esta variable significa el ingreso del trabajo principal, pero con descuentos
+
+3. IngTotalSecun: Esta variable consiste en el ingreso total que tienen los encuestados de su trabajo secundario sin descuentos
+
+4. IngLiquiSecun: Esta variable se refiere al ingreso del trabajo secundario, pero con descuentos
+
+5. ID: Esta variable se refiere a la identificación del encuestado
+
+6. HorasTrabajadasPrin: Nos referimos a la cantidad de horas empleadas, a la semana, en el trabajo primario
+
+7. HorasTrabajadasSecun: Nos referimos a la cantidad de horas empleadas, a la semana, en el trabajo secundario
+
+```{r}
+#Renombramos nuestras variables
+names(subdata)= c("Edad","Sexo","IngTotalPrin","IngLiquiPrin","IngTotalSecun","IngLiquiSecun","ID","HorasTrabajadasPrin","HorasTrabajadasSecun")
+names(subdata)
+```
+
+names(subdata)= c("Edad","Sexo","IngTotalPrin","IngLiquiPrin","IngTotalSecun","IngLiquiSecun","ID","HorasTrabajadasPrin","HorasTrabajadasSecun")
+names(subdata)
+
+### Limpieza de data
+
+```{r}
+#Eliminación de valores atípicos
+subdata=subdata[!subdata$Edad==999999.0000,]
+subdata=subdata[!subdata$IngTotalPrin==999999.0000,]
+subdata=subdata[!subdata$IngLiquiPrin==999999.0000,]
+subdata=subdata[!subdata$IngLiquiSecun==999999.0000,]
+subdata=subdata[!subdata$IngTotalSecun==999999.0000,]
+subdata=subdata[!subdata$HorasTrabajadasSecun==99,]
+subdata=subdata[!subdata$HorasTrabajadasPrin==0,]
+#Trabajamos sin valores perdidos
+subdata=na.omit(subdata)
+#Eliminados la variable ID para que no interfiera con las variables
+subdata=subdata[,-c(7)]
+```
+
+### Recategorización de variables
+
+```{r}
+subdata$Sexo=as.factor(subdata$Sexo)
+levels(subdata$Sexo)<-c("Hombre","Mujer") 
+subdata$Edad=as.numeric(subdata$Edad)
+subdata$IngTotalPrin=as.numeric(subdata$IngTotalPrin)
+subdata$IngLiquiPrin=as.numeric(subdata$IngLiquiPrin)
+subdata$IngTotalSecun=as.numeric(subdata$IngTotalSecun)
+subdata$IngLiquiSecun=as.numeric(subdata$IngLiquiSecun)
+subdata$HorasTrabajadasSecun=as.numeric(subdata$HorasTrabajadasSecun)
+subdata$HorasTrabajadasPrin=as.numeric(subdata$HorasTrabajadasPrin)
+str(subdata)
+```
+
+### Creamos índices aditivos que nos ayudarán para un mejor análiis
+
+```{r}
+#Indice aditivo de ingreso total líquido por trabajo secundario y primario 
+subdata$montogeneral=subdata$IngLiquiPrin+subdata$IngLiquiSecun
+subdata$montogeneral=as.numeric(subdata$montogeneral)
+str(subdata$montogeneral)
+#Indice aditivo sobre las horas laborales
+subdata$HorasTrabajadasTotal=subdata$HorasTrabajadasPrin+subdata$HorasTrabajadasSecun
+```
+
+### Exportación de data
+```{r}
+export(subdata, "subdata.csv")
+```
+
+## REGRESIÓN POISSON
+
+Para este trabajo tomaremos a la Regresión Poisson. Nuestro tema de investigación gira en torno a la jornada laboral que necesitan los trabajadores en nuestro país para ganar el sueldo mínimo. Esto con el fin de conocer si hay coherencia con  el límite de horas semanales (48) respecto a lo que establece la Ley Nº 27671. Además, incluiremos un enfoque de género tratando de comprobar lo que señala la INEI respecto a la diferencia de la jornada laboral entre hombres y mujeres, puesto que en un informe publicado el 2015, esta institución reveló que las mujeres trabajaban 9 horas semanales más que los hombres. Por este motivo, se realizarán dos modelos predictivos que incluyan a una variable representativa de género, y de esta manera se hallará cuántas horas necesita un trabajador/a para alcanzar el sueldo mínimo según su género. 
+
+> En una regresión Poisson, las variables numéricas deben ser transformadas a logaritmo. Por esta razón, debemos convertir montogeneral a una función logarítmica.
+
+```{r}
+library(ISwR)
+logpop= log(subdata[,9])
+```
+
+En el anterior chunk creamos un nuevo objeto llamado logpop en el que "montogeneral" ha sido transformado a un logaritmo. En este próximo debemos integrar este objeto con la anterior subdata que habíamos creado para que se pueda concretizar el modelo predictivo. Este nuevo objeto tendrá como nombre "new.subdata"; de esta manera, más adelante no afectaremos la data que contiene las variables que hemos considerado para nuestro proyecto.
+
+```{r}
+new.subdata=cbind(subdata, logpop)
+head(new.subdata)
+```
+
+A continuación, realizaremos un modelo poisson con las variables escogidas anteriormente. Este modelo será almacenado en el objeto "poisson.model.rate".
+
+```{r}
+poisson.model.rate<- glm(HorasTrabajadasTotal~ Sexo + offset(logpop), family= poisson(link="log"), data= subdata)
+summary(poisson.model.rate)
+```
+
+Luego, ejecutamos la función fitted para pronosticar nuestra variable dependiente en base a las variables independientes y obtener un panorama general de lo que vamos a pronosticar.
+
+```{r}
+fitted(poisson.model.rate)
+```
+
+Ahora bien, usaremos el data.frame para seleccionar los parámetros que seleccionamos para hallar la predicción. Debido a que queremos predecir cuántas horas deben trabajar las mujeres para ganar un sueldo mínimo, elegimos al "930" como el valor soliticado para monto general, y en el caso de Sexo colocaremos el valor "Hombre" pues representa a las mujeres. Despúes de crear ese date frame, usaremos la función "predict" para concretar la predicción solicitada.
+
+```{r}
+test.data= data.frame (Sexo="Hombre", montogeneral=c(930),logpop= log(c(930)))
+predict.value <- predict(poisson.model.rate, test.data, type="response")
+predict.value
+```
+
+Haremos el mismo procedimiento en este caso, la única diferencia es que solicitaremos "Mujer" en vez de "Hombre" , puesto que es el valor de "Sexo" que representa a las hombres. 
+
+```{r}
+test.data1= data.frame (Sexo="Mujer", montogeneral=c(930),logpop= log(c(930)))
+predict.value2 <- predict(poisson.model.rate, test.data1, type="response")
+predict.value2
+```
+
+> Según ambos modelos predictivos Poisson, podemos notar una leve diferencia entre el tiempo de trabajo que deben laborar las mujeres respecto a los hombres. Por un lado, las mujeres deben trabajar un promedio de 32.08 horas semanales para ganar el sueldo mínimo. Por otro lado, los hombres necesitan trabajar 28.45 semanales para ganar dicho monto.
+
+## CLUSTERS
+
+### Estrategia de Partición
+
+Pasaremos a realizar una clusterización en la cual se observará si es que hay algún grupo que esté por debajo de S/ 360, con lo cual sabremos si tenemos grupos que se encuentren en situación de pobreza.
+
+#### 1. Calcular distancias entre los casos (filas)
+
+```{r}
+library(cluster)
+set.seed(123)
+g.dist=daisy(subdata[,c(1,4,6,10)], metric = "gower")
+```
+
+#### 2. Sugerencia de cantidad de clusters (ANEXO 1)
+
+#### 3. Clusterización
+
+Pedimos 2 grupos y creamos una nueva columna con el identificador
+
+```{r}
+set.seed(123)
+pam.resultado=pam(g.dist,2,cluster.only = F)
+
+#nueva columna con su respectivo cluster
+subdata$clustPT=pam.resultado$cluster
+```
+
+#### 4. Exploramos resultados
+
+Aquí observaremos  las características de cada cluster
+
+```{r}
+aggregate(cbind(Edad,IngLiquiPrin,IngLiquiSecun,HorasTrabajadasTotal)~clustPT,data = subdata,mean)
+```
+
+Como podemos observar, en esta clusterización, la edad influye en que uno persona tenga una mayor cantidad de ingresos. De la misma manera, las horas trabajadas influyen en que unos ganen más que otros. En el primer cluster vemos que la media de horas trabajadas es de 49 horas, y en el segundo la media de horas trabajadas es de 57 horas, lo cual también tiene relación con los ingresos presentados. Los que se encuentran en el grupo que trabaja más horas, también son los que tienen ganancias más altas, tanto en su trabajo primario como en el secundario.
+
+## LATENTES
+
+Realizamos una subdata con las variables que nos interesan para realizar una latente
+
+```{r}
+dontselect=c("montogeneral","Edad","Sexo","HorasTrabajadasPrin","HorasTrabajadasSecun","clustPT","HorasTrabajadasTotal")
+select=setdiff(names(subdata),dontselect) 
+theData=subdata[,select]
+```
+
+Asimismo, se realiza el análisis de correlación.
+
+```{r}
+matriz_correlación<- cor (theData)
+matriz_correlación
+```
+
+Lo visualizamos gráficamente:
+
+```{r}
+library(corrplot)
+corrplot(cor(theData), order= "hclust", tl.col="black", tl.cex=1)
+```
+
+Cálculo de los estimadores del Test de Barlett y el MSA (KMO)
+
+```{r}
+bartlett.test(theData)
+```
+
+El p-value al ser menor a 0,05 nos permite rechazar la hipótesis nula. Lo cual quiere decir que sí hay correlación.
+
+```{r}
+det(matriz_correlación)
+```
+
+Este valor debe ser diferente de uno y un valor muy cercano al 0. Con esto se ve si se podría o no darse un análisis factorial. En este caso, se cumple, ya que el 0.006 es muy cercano al 0.
+
+```{r}
+anafact <- factanal(theData, factors=1, rotation = "none", scores= "Bartlett")
+
+anafact
+
+anafact1 <- factanal(theData, factors=1, rotation = "varimax", scores= "Bartlett")
+
+anafact1
+```
+
+Como podemos observar, el Ingreso Total principal (IngTotalPrin) es el que más se relaciona con la variable latente (0.991). 
+
+Pasamos a determinar el número de factores 
+
+```{r}
+ev <- eigen(matriz_correlación) #obtención de los autovalores
+ev
+library(snow)
+ap <- parallel(subject=nrow(theData),var=ncol(theData), rep=100, cent=.05)
+ap
+library(nFactors)
+nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)
+nS
+plotnScree(nS, xlab ="Número de componentes", ylab="Autovalores", main="Solución por autovalores para determinar el número de factores o componentes")
+```
+Según nuestra gráfica de "plotnScree", el número de factores debe ser 1.
+
+```{r}
+eigen(matriz_correlación)
+```
+
+Observamos los seis primeros datos:
+
+```{r}
+puntuaciones_fact = anafact1$scores
+head(puntuaciones_fact)
+```
+
+
+## ANALISIS CONFIRMATORIO
+
+Este anális lo que realiza es comprobar si las variables antes descritas explican la variable definida
+
+### Se abren las librerías pertinentes
+
+```{r}
+library(semPlot)
+library(readr)
+library(lavaan)
+```
+
+### Especificamos el modelo y los factores latentes
+
+```{r}
+model <- ' sueldo  =~ IngTotalPrin + IngLiquiPrin + IngTotalSecun + IngLiquiSecun'
+```
+
+Observamos nuestro modelo
+
+```{r}
+modelo <- cfa(model, data=theData)
+summary(modelo,fit.measures=TRUE)
+```
+
+Aquí es importante el p-value en las variables latentes. Para todas las variables es casi nulo. Cada una de las hipótesis cae en al región de rechazo; por lo tanto, todas las variables pueden ser relacionadas con el modelo sueldo.
+
+
+
+## CONCLUSIONES
+
+En este trabajo se plantearon las siguientes hipotesis:
+
+1.- Factores como la edad y la cantidad de horas trabajadas por parte de los encuestados, afecta en el salario que tienen: a mayor edad y horas de trabajo, mayor serán los ingresos de las personas.
+
+2.- El promedio de horas que tienen que trabajar los hombres para conseguir llegar al sueldo mínimo peruano es menor al promedio de horas que tienen que trabajar las mujeres para lograr el sueldo mínimo.
+
+3.- La variable de ingreso por el trabajo principal de una persona influye mucho en su sueldo final.
+
+
+La primera hipotesis se cumplió. Esto significaría que la edad y la cantidad de horas trabajadas de una persona influye en que una persona tenga un ingreso mayor. En futuras investigaciones sería interesante plantear nuevas variables que puedan influenciar en el ingreso de las personas, como los años de educación, la profesión que tienen y cómo esto influye en el ingreso de las personas.
+
+La segunda hipotesis se cumplió. Esto significaría que los hombres necesitan en promedio menos horas de trabajo (28) para lograr llegar al sueldo mínimo, a comparación de las mujeres que necesitan de más horas (32). En futuras investigaciones sería interesante plantear la búsqueda de factores que estén generando esta diferencia de tiempo que se le tiene que dedicar al trabajo para lograr llegar al sueldo mínimo.
+
+La tercera hipotesis se cumplió. Esto significaría que las variables latentes seleccionadas (IngTotalPrin + IngLiquiPrin + IngTotalSecun + IngLiquiSecun) cumplen con explicar el mismo factor que representa al sueldo de las personas. Por ello, tanto como para esta investigación como para futuros estudios es factible realizar indices aditivos entre estas variables. En futuras investigaciones sería interesante agregar nuevas variables de ingreso que tienen las personas, como gratificaciones y bonos.
+
+## ANEXOS
+
+> Anexo 1: Sugerencia de clusters
+
+```{r}
+library(factoextra)
+fviz_nbclust(subdata[,c(1,4,6,10)],pam,diss = g.dist,method = "gap_stat",k.max = 10,verbose = F)
+```
+
+Si bien es cierto se nos sugiere realizar dos clusters para nuestra estrategia, el solo comparar dos clusters no sería tan útil para comparar entre diferentes grupos la edad, las ganancias laborales y sus horas de trabajo
